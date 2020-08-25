@@ -111,24 +111,12 @@ while true; do
     show_current_slide
 
     # Navigation
-    case "$(read_char)" in
-    "j"|"n")
-        [ "$I" -eq "$TOTAL" ] && quit
-        I=$((I + 1))
-        ;;
-    "k"|"p"|"N")
-        I=$((I - 1))
-        ;;
-    "g"|"0")
-        I=0
-        ;;
-    "G")
-        I=$((TOTAL - 1))
-        ;;
-    "q")
-        quit
-        ;;
-    *)
-        ;;
+    case $(read_char) in
+        [jn])   [ "$I" -eq "$TOTAL" ] && quit; I=$((I + 1)) ;;
+        [kpN])  I=$((I - 1)) ;;
+        [g0])   I=0 ;;
+        G)      I=$((TOTAL - 1)) ;;
+        q)      quit ;;
+        *)
     esac
 done
