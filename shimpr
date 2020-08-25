@@ -1,108 +1,87 @@
 #!/bin/sh
 
-# opts
-
 usage () {
-(
-    name=$(basename "$0")
-    len=$(printf "%s" "$name" |wc -m)
-    ___O=$(printf "%*s" "$len" ' ')
-
     cat <<EOF
-Usage: $name [-h|--help] [DIR]
+Usage: ${0##*/} [-h|--help] [DIR]
 
-       $___O DIR: directory containing the slides.
-       $___O -h|--help: show this help.
+    -h, --help:  Show this help.
+    DIR:         Directory containing the slides.
 EOF
-)
-    exit 0;
 }
 
-for arg ; do
-case "$arg" in
---help|-h) usage; shift ;;
-esac
-done
-
-WORK_DIR="${1:-./}"
-SLIDES="$(LANG=C ls -1q "$WORK_DIR"*)"
-TOTAL=$(echo "$SLIDES" |wc -l)
-I=0
-
-# term control
-
-hide_cursor() { printf '\e[?25l'; }
-show_cursor() { printf '\e[?25h'; }
-clear_screen() { printf '\e[2J'; }
-clear_line() { printf '\e[2K'; }
-# Move cursor to given coordinates
-# $1: line
-# $2: column
-mov_to() { printf '\e[%sH' "${1};${2}"; }
-# Move cursor down N lines
-# $1: nb_line
-mov_down() { printf '\e[%sB' "$1"; }
-
-clear_screen_inplace() {
-    x=$LINES
-    mov_to 0 0
-    while [ $x -gt 0 ]; do
-        clear_line
-        mov_down 1
-        x=$((x - 1))
-    done
-}
-
-get_screen_geometry() {
-    LINES=$(tput lines)
-    COLUMNS=$(tput cols)
-}
-
-slide_n() { echo "$SLIDES" | sed -n "${1}"p; }
-
-# Cat file clamped to geometry
-# $1: file name
-# $2: screen height (lines)
-# $3: screen width (columns)
-clamped_cat() { cut -c-"$3" "$1" | head -$(($2 - 1)); }
-
-quit() {
+quit () {
     trap - EXIT
-    [ "$old_tty_cfg" ] && stty "$old_tty_cfg"
-    clear_screen
-    mov_to "$LINES" 0
-    show_cursor
+
+    # Clear the screen.
+    printf '\e[2J'
+
+    cursor_goto "$LINES" 0
+
+    # Show the cursor.
+    printf '\e[?25h'
     printf '\r'
+
+    [ "$old_tty_cfg" ] && stty "$old_tty_cfg"
     exit 0
 }
-trap 'quit' INT QUIT TERM EXIT
 
-show_current_slide() {
-    current_slide=$(slide_n $((I + 1)))
+cursor_goto () {
+    printf '\e[%sH' "${1};${2}"
+}
 
-    clear_screen_inplace
-    mov_to 0 0
+show_current_slide () {
+    current_slide=$(printf '%s\n' "$SLIDES" | sed -n $((I + 1))p )
+
+    # Clear the screen in place.
+    cursor_goto 0 0
+    x=$LINES
+    while [ "$x" -gt 0 ]
+    do
+        # Clear the current line.
+        printf '\e[2K'
+        # Move the cursor down one line.
+        printf '\e[1B'
+        x=$((x - 1))
+    done
+    cursor_goto 0 0
 
     if [ "$I" -eq "$TOTAL" ]; then
-        mov_to $((LINES / 2 - 1)) $((COLUMNS / 2 - 2))
-        printf 'END.'
+        cursor_goto $((LINES / 2 - 1)) $((COLUMNS / 2 - 2))
+        printf END.
         return
     else
-        clamped_cat "$current_slide" "$LINES" "$COLUMNS"
+        cut -c-"$COLUMNS" "$current_slide" | head -$((LINES - 2))
     fi
 
     # Write slide number at bottom left.
-    mov_to "$LINES" 0
-    printf '%d/%d' "$((I+1))" "$TOTAL"
+    cursor_goto "$LINES" 0
+    printf %d/%d $((I+1)) "$TOTAL"
 }
 
-# Read one char, +icanon should be restored on exit
-old_tty_cfg="$(stty -g)"
-stty -icanon
-read_char() { dd ibs=1 count=1 2>/dev/null; }
+trap quit INT QUIT TERM EXIT
 
-get_screen_geometry
-hide_cursor
+for arg do
+    case $arg in
+        --help|-h) usage; exit 0 ;;
+    esac
+done
+
+WORK_DIR=${1:-.}
+SLIDES=$(printf '%s\n' "$WORK_DIR"/* | LANG=C sort)
+TOTAL=$(printf '%s\n' "$WORK_DIR"/* | wc -l)
+I=0
+
+# Save terminal options to be restored on exit.
+old_tty_cfg=$(stty -g)
+stty -icanon
+
+# Get screen geometry.
+LINES=$(tput lines)
+COLUMNS=$(tput cols)
+
+# Hide the cursor.
+printf '\e[?25l'
+
 while true; do
     # clamp I
     [ "$I" -lt 0 ] && I=0
@@ -111,7 +90,7 @@ while true; do
     show_current_slide
 
     # Navigation
-    case $(read_char) in
+    case $(dd ibs=1 count=1 2>/dev/null) in
         [jn])   [ "$I" -eq "$TOTAL" ] && quit; I=$((I + 1)) ;;
         [kpN])  I=$((I - 1)) ;;
         [g0])   I=0 ;;
